@@ -9,7 +9,7 @@ As I researched political measures for my current position, I became interested 
 
 ## Regression Discontinuity Patient and PCP.ipynb
 
-This was an example project where I began researching Regression Discontinuity Design (RDD). The purpose of this project was to gain a general understanding of RDD and apply it to an interest. My significant other is a medical student, and the intersection of marketing and medicine is of great interest to me, so I wanted to see how RDD can be used in this discipline. Data were simulated to represent distance to Primary Care Physician (PCP) and the willingness to seek medical treatment, however, I would like to pursue surveys for future research. At this point, the data was not readily available. 
+This was an example project where I began researching Regression Discontinuity Design (RDD). The purpose of this project was to gain a general understanding of RDD and apply it to an interest. My significant other is a medical student, and the intersection of marketing and medicine is of great interest to me, so I wanted to see how RDD can be used in this discipline. Data were simulated to represent distance to Primary Care Physician (PCP) and the willingness to seek medical treatment, however, I would like to pursue surveys for future research. At this point, the data were not readily available. 
 
 The "idea" behind RDD in this context, was that we could determine ideal pop-up clinic locations based on a localized study. We can measure the ATE of a pop-up clinic based on original distance and the post-treatment effect on willingness to visit a PCP. 
 * Contains: 
