@@ -1,0 +1,141 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is my first Kaggle competition, I thought it would be interesting to pick a marketing/sales related dataset to work with. I'm choosing to work in R for this assignment, if only because I'm more comfortable in Python and I'm trying to expand my language capabilities. Let's perform some initial exploratory analysis/pre-processing. 
+
+# Pre-Processing
+```{r include=FALSE}
+setwd("~/Documents/Kaggle/house-prices-advanced-regression-techniques")
+#Load Libraries
+Packages <- c('dplyr', 'tidyr', 'ggplot2', 'shapr', 'readr', 'shapr', 'Amelia')
+lapply(Packages, library, character.only=T)
+```
+```{r}
+#Read in training and test sets
+train<-read_csv('train.csv')
+test<-read_csv('test.csv')
+
+print(dim(train))
+print(dim(test))
+head(train)
+```
+
+There are 81 columns in this dataset with 1460 total rows. Because of the size, let's take a look at some descriptive statistics, including missing values. 
+
+```{r}
+sprintf('There are %s missing values', sum(is.na(train)))
+mis_vals <- sort(sapply(train, function(x) sum(is.na(x))), decreasing= T)[1:19]
+
+as.data.frame(mis_vals)
+```
+
+It seems that the majority of missing values associated with qualitative measures referring to housing characteristics. There is a great package to deal with missing values, Amelia, which uses multiple imputation. First though, we'll add labels to the character columns, and check for collinear variables. 
+
+```{r}
+
+#Select numeric for correlation matrix
+num_cols<-train[,sapply(train, class)=='numeric']
+num_cols<-num_cols[!names(num_cols)%in% c('LotFrontage', 'GarageYrBlt', 'MasVnrArea')] #exclude columns with missing
+
+library(CatEncoders)
+char <- train[,sapply(train, class)=='character'] #Get character columns
+char_names<-names(char)
+for(col in char_names){ #convert characters to numeric
+    lab<-LabelEncoder.fit(unique(na.omit(train[[col]])))
+    train[col]<-transform(lab,train[[col]])
+    test[col]<-transform(lab, test[[col]])
+}
+
+
+cor_matrix <- round(cor(num_cols),2)
+library(ggcorrplot)
+ggcorrplot(cor_matrix, hc.order = T, type = 'lower', outline.col='white')
+```
+There are some variables that are concerning in terms of multicollinearity. Let's exclude variables with correlations over .85, and then run a multiple imputation. 
+```{r}
+tmp <- cor(train)
+tmp[upper.tri(tmp)] <- 0
+diag(tmp) <- 0
+train <- train[, !apply(tmp, 2, function(x) any(abs(x) > 0.75
+                                                , na.rm = TRUE))] #remove correlated columns
+train<-train[!names(train)%in%"Utilities"]
+test<-test[names(test)%in%names(train)] #Keep Train columns
+
+col_inds <- array(match(names(mis_vals), colnames(train))) #index columns with missing values
+mis_df <- as.data.frame(t(train[names(mis_vals)])) #generate transposed dataframe of missing values
+min_arr <- array(apply(mis_df, 1, FUN=min, na.rm=T)) #get min/max vals for imputation bounding 
+max_arr <- array(apply(mis_df, 1, FUN=max, na.rm=T)) 
+bounds <- cbind(col_inds, min_arr, max_arr)                    
+```
+
+```{r}
+
+#Multiple imputation
+a_out<- amelia(as.data.frame(train), p2s=0, bounds= bounds)
+
+plot(a_out)
+```
+The distributions ~nearly~ approximate the distributions of the available variables bar a few. Some of our iterations did not converge. I'll run one more diagnostic to see how the imputed data matches the original dataset on LotFrontage. 
+```{r}
+a_out_test<-amelia(as.data.frame(test), p2s=0, bounds= bounds, empiri = .05*length(test))
+plot(a_out_test)
+````
+```{r}
+train<-a_out$imputations$imp5
+test<- a_out_test$imputations$imp5
+overimpute(a_out, 'LotFrontage')
+```
+Looks pretty good! Let's start with our boosting model. 
+
+```{r}
+set.seed(101) # Set Seed so that same sample can be reproduced in future also
+# Now Selecting 75% of data as sample from total 'n' rows of the data  
+sample <- sample.int(n = nrow(train), size = floor(.75*nrow(train)), replace = F)
+train_new <- train[sample, ]
+test_new  <- train[-sample, ]
+X_train <- as.matrix(train[!names(train_new)%in%'SalePrice'])
+y_train <- as.matrix(train[names(train_new)%in%'SalePrice'])
+X_test <- as.matrix(train[!names(test_new)%in%'SalePrice'])
+y_test <- as.matrix(train[names(test_new)%in%'SalePrice'])
+
+library(xgboost)
+d_matrix <- xgb.DMatrix(data = X_train, label = y_train)
+test_matrix<- xgb.DMatrix(data = X_test, label = y_test)
+
+xgbc = xgboost(data = d_matrix, max.depth = 9, nrounds = 250)
+print(xgbc)
+
+pred_y = predict(xgbc, test_matrix)
+
+mse = mean((y_test - pred_y)^2)
+mae = caret::MAE(y_test, pred_y)
+rmse = caret::RMSE(y_test, pred_y)
+
+cat("MSE: ", mse, "MAE: ", mae, " RMSE: ", rmse)
+
+
+
+
+```
+
+```{r}
+x = 1:length(y_test)
+df<-as.data.frame(cbind(x, y_test, pred_y))
+df<-df[1:250,]
+ggplot(data=df, aes(x = df$x))+
+  geom_line(aes(y= df$SalePrice), color = 'red')+
+  geom_line(aes(y=df$pred_y), color = 'blue', alpha = 0.4)
+```
+
+Our test set closely matches the predictions. We can assume that we have a good model. Next we'll predict using the provided test file. 
+
+```{r}
+test_matrix<- xgb.DMatrix(as.matrix(test))
+predictions = data.frame('Id'=test$Id, 'SalePrice'=predict(xgbc, test_matrix))
+write_csv(predictions, 'submission.csv')
+head(predictions)
+```
+My predictions obtained a RMSLE of .17226. 
+
