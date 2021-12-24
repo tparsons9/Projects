@@ -17,3 +17,7 @@ The "idea" behind RDD in this context, was that we could determine ideal pop-up 
   - Simulated Data
   - General write-up
 
+
+## Housing_prices_xgb.rmd
+
+This is an rmd file where I use XGBoost to predict housing prices for a kaggle competition. 
